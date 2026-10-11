@@ -407,9 +407,11 @@ impl HttpResponse {
     /// live stream would require a BufRead wrapper we don't have
     /// yet, and the callers that use readline() (handle_response
     /// for multipart responses) typically consume the whole body
-    /// anyway.
-    #[pyo3(signature = (_size=-1))]
-    fn readline<'py>(&self, py: Python<'py>, _size: i64) -> PyResult<Bound<'py, PyBytes>> {
+    /// anyway. The ``size`` argument is accepted for file-like parity
+    /// and ignored, since the whole line is read either way.
+    #[pyo3(signature = (size=-1))]
+    fn readline<'py>(&self, py: Python<'py>, size: i64) -> PyResult<Bound<'py, PyBytes>> {
+        let _ = size;
         // Drain and scan for the newline with the GIL released (see
         // `read`).
         let line = py.detach(|| {
