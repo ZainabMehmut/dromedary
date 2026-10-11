@@ -388,10 +388,13 @@ impl PyWriteStream {
     fn __exit__(
         &mut self,
         py: Python<'_>,
-        _exc_type: Option<&Bound<PyType>>,
-        _exc_val: Option<&Bound<PyAny>>,
-        _exc_tb: Option<&Bound<PyAny>>,
+        exc_type: Option<&Bound<PyType>>,
+        exc_val: Option<&Bound<PyAny>>,
+        exc_tb: Option<&Bound<PyAny>>,
     ) -> PyResult<bool> {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         self.close(py, None)?;
         Ok(false)
     }
@@ -503,10 +506,13 @@ impl PyBufReadStream {
 
     fn __exit__(
         &self,
-        _exc_type: Option<&Bound<PyType>>,
-        _exc_val: Option<&Bound<PyAny>>,
-        _exc_tb: Option<&Bound<PyAny>>,
+        exc_type: Option<&Bound<PyType>>,
+        exc_val: Option<&Bound<PyAny>>,
+        exc_tb: Option<&Bound<PyAny>>,
     ) -> PyResult<bool> {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         Ok(false)
     }
 
@@ -1368,10 +1374,13 @@ impl PyFile {
 
     fn __exit__(
         &self,
-        _exc_type: Option<&Bound<PyType>>,
-        _exc_val: Option<&Bound<PyAny>>,
-        _exc_tb: Option<&Bound<PyAny>>,
+        exc_type: Option<&Bound<PyType>>,
+        exc_val: Option<&Bound<PyAny>>,
+        exc_tb: Option<&Bound<PyAny>>,
     ) -> PyResult<bool> {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         Ok(false)
     }
 

@@ -159,13 +159,16 @@ impl ResponseFile {
         slf
     }
 
-    #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
+    #[pyo3(signature = (exc_type=None, exc_val=None, exc_tb=None))]
     fn __exit__(
         &self,
-        _exc_type: Option<Py<PyAny>>,
-        _exc_val: Option<Py<PyAny>>,
-        _exc_tb: Option<Py<PyAny>>,
+        exc_type: Option<Py<PyAny>>,
+        exc_val: Option<Py<PyAny>>,
+        exc_tb: Option<Py<PyAny>>,
     ) -> bool {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         false
     }
 
@@ -249,13 +252,16 @@ impl RangeFile {
         slf
     }
 
-    #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
+    #[pyo3(signature = (exc_type=None, exc_val=None, exc_tb=None))]
     fn __exit__(
         &self,
-        _exc_type: Option<Py<PyAny>>,
-        _exc_val: Option<Py<PyAny>>,
-        _exc_tb: Option<Py<PyAny>>,
+        exc_type: Option<Py<PyAny>>,
+        exc_val: Option<Py<PyAny>>,
+        exc_tb: Option<Py<PyAny>>,
     ) -> bool {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         false
     }
 

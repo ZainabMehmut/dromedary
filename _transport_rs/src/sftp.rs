@@ -269,10 +269,13 @@ impl SFTPFile {
     fn __exit__(
         &mut self,
         py: Python,
-        _exc_type: Option<&Bound<PyType>>,
-        _exc_val: Option<&Bound<PyAny>>,
-        _exc_tb: Option<&Bound<PyAny>>,
+        exc_type: Option<&Bound<PyType>>,
+        exc_val: Option<&Bound<PyAny>>,
+        exc_tb: Option<&Bound<PyAny>>,
     ) -> PyResult<bool> {
+        let _ = exc_type;
+        let _ = exc_val;
+        let _ = exc_tb;
         self.close(py)?;
         Ok(false)
     }
