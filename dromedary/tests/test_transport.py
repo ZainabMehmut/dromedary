@@ -36,6 +36,7 @@ from dromedary import (
     urlutils,
 )
 from dromedary import tests as features
+from dromedary._transport_rs import WriteLock
 from dromedary.errors import FileExists, NoSuchFile, UnsupportedProtocol
 from dromedary.local import file_kind
 from dromedary.tests import test_server
@@ -898,6 +899,44 @@ class TestLocalTransportWriteStream(tests.TestCaseWithTransport):
     def test_missing_directory(self):
         t = self.get_transport(".")
         self.assertRaises(NoSuchFile, t.open_write_stream, "dir/foo")
+
+
+class TestExitKeywordArguments(tests.TestCaseInTempDir):
+    """`__exit__` must accept its arguments under the usual names."""
+
+    def test_read_stream_exit_takes_keywords(self):
+        t = memory.MemoryTransport()
+        t.put_bytes("path", b"content")
+        f = t.get("path")
+        self.assertIs(False, f.__exit__(exc_type=None, exc_val=None, exc_tb=None))
+
+    def test_write_stream_exit_takes_keywords(self):
+        t = memory.MemoryTransport()
+        w = t.open_write_stream("path")
+        self.assertIs(False, w.__exit__(exc_type=None, exc_val=None, exc_tb=None))
+
+    def test_lock_file_exit_takes_keywords(self):
+        with open("lock", "wb"):
+            pass
+        lock = WriteLock("lock")
+        self.addCleanup(lock.unlock)
+        f = lock.f
+        self.assertIs(False, f.__exit__(exc_type=None, exc_val=None, exc_tb=None))
+
+    def test_sftp_file_exit_takes_keywords(self):
+        self.requireFeature(features.paramiko)
+        if sys.platform == "win32":
+            raise tests.TestNotApplicable(
+                "SFTPClient cannot use a detached socket on win32"
+            )
+        from dromedary.tests import stub_sftp
+
+        server = stub_sftp.SFTPAbsoluteServer()
+        self.start_server(server)
+        t = transport.get_transport_from_url(server.get_url())
+        t.put_bytes("path", b"content")
+        f = t.get("path")
+        self.assertIs(False, f.__exit__(exc_type=None, exc_val=None, exc_tb=None))
 
 
 class TestWin32LocalTransport(tests.TestCase):
