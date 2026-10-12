@@ -473,6 +473,27 @@ mod tests {
     }
 
     #[test]
+    fn character_references_in_values_resolved() {
+        let body = br#"<?xml version="1.0"?>
+<D:multistatus xmlns:D="DAV:" xmlns:bzr="DAV:">
+  <D:response>
+    <D:href>/a&#38;b</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+        <D:getcontentlength>1&#50;</D:getcontentlength>
+        <bzr:executable>&#84;</bzr:executable>
+      </D:prop>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"#;
+        let entries = parse_responses(body, "/a&b").unwrap();
+        assert_eq!(entries[0].href, "/a&b");
+        assert_eq!(entries[0].size, 12);
+        assert!(entries[0].is_exec);
+    }
+
+    #[test]
     fn unknown_format_xml_rejected() {
         // Valid XML but not a multistatus — Python raises
         // InvalidHttpResponse with msg="Unknown xml response".
