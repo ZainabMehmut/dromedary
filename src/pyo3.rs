@@ -54,6 +54,13 @@ impl From<Py<PyAny>> for PyTransport {
     }
 }
 
+impl PyTransport {
+    /// The Python transport object this wraps.
+    pub fn as_pyobject(&self) -> &Py<PyAny> {
+        &self.0
+    }
+}
+
 fn map_py_err_to_lock_err(e: PyErr) -> LockError {
     Python::attach(|py| {
         if e.is_instance_of::<LockContention>(py) {
