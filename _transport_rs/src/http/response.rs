@@ -194,12 +194,13 @@ impl ResponseFile {
     /// Read all remaining lines. The optional `size` argument is
     /// accepted for Python-file-like compatibility but ignored,
     /// matching the Python version.
-    #[pyo3(signature = (_size=None))]
+    #[pyo3(signature = (size=None))]
     fn readlines<'py>(
         &mut self,
         py: Python<'py>,
-        _size: Option<i64>,
+        size: Option<i64>,
     ) -> PyResult<Vec<Bound<'py, PyBytes>>> {
+        let _ = size;
         let lines = self.inner.readlines().map_err(response_err_to_py)?;
         Ok(lines.into_iter().map(|l| PyBytes::new(py, &l)).collect())
     }

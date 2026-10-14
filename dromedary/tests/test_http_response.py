@@ -60,6 +60,10 @@ class TestResponseFileIter(tests.TestCase):
         f = response.ResponseFile("many", BytesIO(b"0\n1\nboo!\n"))
         self.assertEqual([b"0\n", b"1\n", b"boo!\n"], f.readlines())
 
+    def test_readlines_size_keyword(self):
+        f = response.ResponseFile("many", BytesIO(b"0\n1\nboo!\n"))
+        self.assertEqual([b"0\n", b"1\n", b"boo!\n"], f.readlines(size=-1))
+
 
 class TestRangeFileMixin:
     """Tests for accessing the first range in a RangeFile."""
