@@ -432,6 +432,18 @@ class TestRangeFileVarious(tests.TestCase):
         nok("bytes10-2/3")
 
 
+class TestExitKeywordArguments(tests.TestCase):
+    """`__exit__` must accept its arguments under the usual names."""
+
+    def test_response_file_exit_takes_keywords(self):
+        f = response.ResponseFile("exit", BytesIO(b"abc"))
+        self.assertIs(False, f.__exit__(exc_type=None, exc_val=None, exc_tb=None))
+
+    def test_range_file_exit_takes_keywords(self):
+        f = response.RangeFile("exit", BytesIO(b"abc"))
+        self.assertIs(False, f.__exit__(exc_type=None, exc_val=None, exc_tb=None))
+
+
 # Taken from real request responses
 _full_text_response = (
     200,
