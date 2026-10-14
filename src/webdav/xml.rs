@@ -543,4 +543,39 @@ mod tests {
         let entries = parse_responses(body, "/real").unwrap();
         assert_eq!(entries[0].href, "/real");
     }
+
+    #[test]
+    fn cdata_href_kept_verbatim() {
+        // CDATA text is not escaped, so the `&` must arrive as is.
+        let body = br#"<?xml version="1.0"?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href><![CDATA[/c&d]]></D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+        <D:getcontentlength>7</D:getcontentlength>
+      </D:prop>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"#;
+        let entries = parse_responses(body, "/c&d").unwrap();
+        assert_eq!(entries[0].href, "/c&d");
+        assert_eq!(entries[0].size, 7);
+    }
+
+    #[test]
+    fn non_utf8_body_reports_invalid_http_response() {
+        // Only our prefix is asserted; the rest of the message comes from quick-xml.
+        let mut body =
+            br#"<?xml version="1.0"?><D:multistatus xmlns:D="DAV:"><D:response><D:href>/"#.to_vec();
+        body.push(0xff);
+        body.extend_from_slice(br#"</D:href></D:response></D:multistatus>"#);
+        match parse_propfind_stat(&body, "/url") {
+            Err(Error::InvalidHttpResponse { msg, .. }) => {
+                assert!(msg.starts_with("Malformed xml response:"), "{msg}")
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+    }
 }
