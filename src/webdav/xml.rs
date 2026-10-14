@@ -177,16 +177,25 @@ fn parse_responses(body: &[u8], url: &str) -> Result<Vec<DavEntry>> {
             }
             Event::Text(t) => {
                 if acc.is_some() {
-                    let raw = std::str::from_utf8(&t)
-                        .map_err(|e| text_err(format!("non-UTF-8 text: {}", e)))?;
-                    let s =
-                        quick_xml::escape::unescape(raw).map_err(|e| text_err(e.to_string()))?;
-                    chars.push_str(&s);
+                    chars.push_str(&t);
+                }
+            }
+            Event::GeneralRef(r) => {
+                if acc.is_some() {
+                    if let Some(c) = r.resolve_char_ref().map_err(parse_err)? {
+                        chars.push(c);
+                    } else {
+                        let s =
+                            quick_xml::escape::resolve_predefined_entity(&r).ok_or_else(|| {
+                                text_err(format!("unknown entity reference &{};", &*r))
+                            })?;
+                        chars.push_str(s);
+                    }
                 }
             }
             Event::CData(t) => {
                 if acc.is_some() {
-                    chars.push_str(&String::from_utf8_lossy(&t));
+                    chars.push_str(&t);
                 }
             }
             Event::Eof => break,
@@ -264,8 +273,7 @@ fn commit_element(acc: &mut ResponseAccumulator, stack: &[String], name: &str, c
 /// but the vocabulary is flat enough that we don't need to track
 /// which prefix binds which URI — treating `href` and `D:href` as
 /// equivalent is what the Python version does.
-fn strip_ns(raw: &[u8]) -> String {
-    let s = std::str::from_utf8(raw).unwrap_or("");
+fn strip_ns(s: &str) -> String {
     match s.split_once(':') {
         Some((_, rest)) => rest.to_string(),
         None => s.to_string(),
@@ -438,6 +446,30 @@ mod tests {
 </multistatus>"#;
         let stat = parse_propfind_stat(body, "/f").unwrap();
         assert_eq!(stat.size, 42);
+    }
+
+    #[test]
+    fn entity_references_in_href_resolved() {
+        let body = br#"<?xml version="1.0"?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response><D:href>/dir/</D:href>
+    <D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat>
+  </D:response>
+  <D:response><D:href>/dir/a&amp;b&#x41;</D:href></D:response>
+</D:multistatus>"#;
+        let entries = parse_propfind_dir(body, "/dir/").unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.href.as_str()).collect();
+        assert_eq!(names, vec!["a&bA"]);
+    }
+
+    #[test]
+    fn unknown_entity_reference_rejected() {
+        let body = br#"<?xml version="1.0"?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response><D:href>/f&bogus;</D:href></D:response>
+</D:multistatus>"#;
+        let result = parse_propfind_stat(body, "/f");
+        assert!(matches!(result, Err(Error::InvalidHttpResponse { .. })));
     }
 
     #[test]

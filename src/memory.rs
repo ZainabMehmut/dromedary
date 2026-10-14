@@ -676,6 +676,19 @@ mod tests {
     }
 
     #[test]
+    fn downcast_from_dyn_transport() {
+        let t: Box<dyn Transport> = Box::new(t());
+        let any: &dyn std::any::Any = t.as_ref();
+        assert_eq!(
+            any.downcast_ref::<MemoryTransport>()
+                .unwrap()
+                .base()
+                .as_str(),
+            "memory:///"
+        );
+    }
+
+    #[test]
     fn new_defaults_and_normalises_url() {
         let t = MemoryTransport::new("").unwrap();
         assert_eq!(t.base().as_str(), "memory:///");

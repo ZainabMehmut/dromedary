@@ -251,7 +251,10 @@ pub trait WriteStream: std::io::Write {
 
 pub trait ReadStream: Read + Seek {}
 
-pub trait Transport: std::fmt::Debug + 'static + Send + Sync {
+/// A transport is `Any`, so code holding a `dyn Transport` can upcast it to
+/// `dyn Any` and downcast to the concrete type, e.g. to get at the Python
+/// object behind a `PyTransport`.
+pub trait Transport: std::any::Any + std::fmt::Debug + Send + Sync {
     /// Return a URL for self that can be given to an external process.
     ///
     /// There is no guarantee that the URL can be accessed from a different

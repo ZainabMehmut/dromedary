@@ -1,6 +1,7 @@
 use crate::{
     Error, Lock, LockError, ReadStream, Result, Stat, Transport, Url, UrlFragment, WriteStream,
 };
+use pyo3::exceptions::PyValueError;
 use pyo3::import_exception;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -45,12 +46,26 @@ import_exception!(dromedary.errors, NotADirectory);
 import_exception!(dromedary.errors, ResourceBusy);
 import_exception!(dromedary.errors, ReadError);
 import_exception!(dromedary.urlutils, InvalidURL);
+import_exception!(dromedary.errors, InvalidHttpResponse);
+import_exception!(dromedary.errors, UnexpectedHttpStatus);
+import_exception!(dromedary.errors, InvalidHttpRange);
+import_exception!(dromedary.errors, BadHttpRequest);
+import_exception!(dromedary.errors, RedirectRequested);
+import_exception!(dromedary.errors, UnusableRedirect);
+import_exception!(dromedary.errors, ConnectionError);
 
 pub struct PyTransport(Py<PyAny>);
 
 impl From<Py<PyAny>> for PyTransport {
     fn from(obj: Py<PyAny>) -> Self {
         PyTransport(obj)
+    }
+}
+
+impl PyTransport {
+    /// The Python transport object this wraps.
+    pub fn as_pyobject(&self) -> &Py<PyAny> {
+        &self.0
     }
 }
 
@@ -92,6 +107,60 @@ impl<'py> IntoPyObject<'py> for PyTransport {
 
     fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
         Ok(self.0.bind(py).clone())
+    }
+}
+
+/// The Python exception for the transport error `e`, as dromedary's Python
+/// transports raise it. `t` is the transport and `p` the path involved, for
+/// errors that do not carry their own.
+pub fn map_transport_err_to_py_err(
+    e: Error,
+    t: Option<Py<PyAny>>,
+    p: Option<&UrlFragment>,
+) -> PyErr {
+    let pick_path = |n: Option<String>| n.or_else(|| p.map(|p| p.to_string()));
+    match e {
+        Error::InProcessTransport => InProcessTransport::new_err((t,)),
+        Error::NotLocalUrl(url) => NotLocalUrl::new_err((url,)),
+        Error::NoSuchFile(name) => NoSuchFile::new_err((pick_path(name),)),
+        Error::FileExists(name) => FileExists::new_err((pick_path(name),)),
+        Error::TransportNotPossible(msg) => TransportNotPossible::new_err((msg,)),
+        Error::UrlError(_e) => InvalidURL::new_err((p.map(|p| p.to_string()),)),
+        Error::PermissionDenied(name) => PermissionDenied::new_err((pick_path(name),)),
+        Error::PathNotChild => {
+            PathNotChild::new_err((p.map(|p| p.to_string()).unwrap_or_default(), "".to_string()))
+        }
+        Error::UrlutilsError(_e) => InvalidURL::new_err((p.map(|p| p.to_string()),)),
+        Error::Io(e) => e.into(),
+        Error::UnexpectedEof => PyValueError::new_err("Unexpected EOF"),
+        Error::LockContention(name) => LockContention::new_err((name,)),
+        Error::LockFailed(name, error) => LockFailed::new_err((name, error)),
+        Error::NotADirectoryError(name) => NoSuchFile::new_err((pick_path(name),)),
+        Error::IsADirectoryError(name) => ReadError::new_err((pick_path(name), "is a directory")),
+        Error::DirectoryNotEmptyError(name) => DirectoryNotEmpty::new_err((pick_path(name),)),
+        Error::ShortReadvError(path, offset, expected, got) => {
+            ShortReadvError::new_err((path, offset, expected, got))
+        }
+        Error::ResourceBusy(name) => ResourceBusy::new_err((pick_path(name),)),
+        Error::InvalidHttpResponse { path, msg } => InvalidHttpResponse::new_err((path, msg)),
+        Error::UnexpectedHttpStatus { path, code, extra } => {
+            UnexpectedHttpStatus::new_err((path, code, extra))
+        }
+        Error::InvalidHttpRange { path, range, msg } => {
+            InvalidHttpRange::new_err((path, range, msg))
+        }
+        Error::BadHttpRequest { path, reason } => BadHttpRequest::new_err((path, reason)),
+        Error::RedirectRequested {
+            source,
+            target,
+            is_permanent,
+        } => RedirectRequested::new_err((source, target, is_permanent)),
+        Error::UnusableRedirect {
+            source,
+            target,
+            reason,
+        } => UnusableRedirect::new_err((source, target, reason)),
+        Error::ConnectionError(msg) => ConnectionError::new_err((msg,)),
     }
 }
 
