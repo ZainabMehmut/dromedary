@@ -176,8 +176,14 @@ impl russh::client::Handler for VerifyingHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &russh::keys::ssh_key::PublicKey,
+        server_key: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        let server_public_key = match server_key {
+            russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            // We advertise no certificate algorithms, so a server sending a
+            // certificate is misbehaving.
+            russh::keys::PublicKeyOrCertificate::Certificate(_) => return Ok(false),
+        };
         match check_host_key(
             &self.host,
             self.port,
