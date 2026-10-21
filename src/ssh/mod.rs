@@ -2,8 +2,12 @@
 //! vendors and vendor auto-detection, shared by the PyO3 layer in
 //! `_transport_rs` and unit-testable without Python link symbols.
 //!
-//! Spawning, connection wrappers, and library-backed vendors live in
-//! `_transport_rs/src/ssh/` because they're PyO3-facing.
+//! The russh-backed vendor lives in `russh_vendor`, gated behind the `russh`
+//! Cargo feature. Spawning helpers and Python-facing wrappers remain in
+//! `_transport_rs/src/ssh/`.
+
+#[cfg(feature = "russh")]
+pub mod russh_vendor;
 
 use std::error::Error;
 use std::ffi::OsStr;

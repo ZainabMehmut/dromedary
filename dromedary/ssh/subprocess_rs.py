@@ -61,7 +61,7 @@ class _RustSubprocessVendor(SSHVendor):
         self, username: str, password: str | None, host: str, port: int | None
     ) -> SFTPClientProtocol:
         fd = self._vendor.spawn_sftp(username, host, port)
-        return SFTPClient(fd)
+        return SFTPClient(fd, host, port)
 
     def connect_ssh(
         self,

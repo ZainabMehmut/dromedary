@@ -1544,6 +1544,7 @@ mod webdav;
 
 #[pymodule]
 fn _transport_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+    pyo3_log::init();
     m.add_class::<Transport>()?;
     m.add_class::<ConnectedTransport>()?;
     m.add_class::<ReadvIter>()?;

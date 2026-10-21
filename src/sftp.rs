@@ -832,7 +832,7 @@ pub(crate) mod tests {
         assert_eq!(st.mtime, Some(1_700_000_000.0));
     }
 
-    // ---- Loopback integration tests -------------------------------------
+    // Loopback integration tests
     //
     // The harness spins up an in-process fake SFTP server on one end of a
     // `UnixStream::pair()` and drives `SftpTransport` against it. The

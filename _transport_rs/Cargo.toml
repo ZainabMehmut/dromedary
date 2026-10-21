@@ -10,23 +10,17 @@ crate-type = ["cdylib"]
 dromedary = { path = "..", version = "0.1.10" }
 pyo3 = { workspace = true, features = ["extension-module"] }
 pyo3-filelike = { workspace = true }
+pyo3-log = "0.13"
 sftp = ">=0.2.3, <0.4"
 url = { workspace = true }
 log = { workspace = true }
-russh = { version = "0.62", optional = true }
-tokio = { version = "1", features = [
-	"rt",
-	"io-util",
-	"net",
-	"sync",
-	"macros",
-], optional = true }
+russh = { version = "0.64", optional = true }
 lazy_static = "1"
 
 [features]
 default = ["russh", "webdav"]
 gio = ["dromedary/gio"]
-russh = ["dep:russh", "dep:tokio"]
+russh = ["dep:russh", "dromedary/russh"]
 # WebDAV bindings. Forwards to dromedary/webdav which pulls in
 # quick-xml for parsing multi-status PROPFIND responses.
 webdav = ["dromedary/webdav"]

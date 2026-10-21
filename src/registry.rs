@@ -86,7 +86,7 @@ fn registry() -> &'static Registry {
 }
 
 fn register_builtins(m: &mut HashMap<String, Box<dyn TransportFactory>>) {
-    // ---- Base schemes ---------------------------------------------------
+    // Base schemes
     m.insert(
         "file://".into(),
         Box::new(|url: &str| -> Result<Box<dyn Transport + Send + Sync>> {
@@ -131,7 +131,7 @@ fn register_builtins(m: &mut HashMap<String, Box<dyn TransportFactory>>) {
         m.insert("webdavs://".into(), Box::new(|u: &str| build_webdav(u)));
     }
 
-    // ---- Decorators -----------------------------------------------------
+    // Decorators
     //
     // Each decorator wraps the result of recursively dispatching the rest
     // of the URL. They're cheap to compose: `log+readonly+memory:///` →
@@ -448,7 +448,7 @@ mod tests {
         assert!(s.iter().any(|x| x == "log+"));
     }
 
-    // ---- Decorator dispatch ---------------------------------------------
+    // Decorator dispatch
 
     #[test]
     fn readonly_decorator_wraps_inner_memory_transport() {

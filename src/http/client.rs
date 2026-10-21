@@ -2177,7 +2177,6 @@ mod tests {
         }
     }
 
-    // ------------------------------------------------------------------
     // Auth tests. We exercise the helpers directly — the full
     // send_with_auth loop needs a real HTTP server, which we cover
     // elsewhere (breezy's test suite, plus the Python integration

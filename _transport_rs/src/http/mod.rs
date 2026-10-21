@@ -12,13 +12,11 @@ use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
 use pyo3::IntoPyObjectExt;
 
-// ---------------------------------------------------------------------------
 // Credential-lookup callback. Breezy registers a Python callable that
 // maps (protocol, host, port, path, realm) to (user, password). We
 // store the Py<PyAny> here so the hot-path auth code in urllib.py (and
 // eventually the Rust HTTP client) can call into it without round-
 // tripping through module-attribute lookup.
-// ---------------------------------------------------------------------------
 
 lazy_static! {
     /// Registered credential-lookup callback. `None` means no

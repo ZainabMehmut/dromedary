@@ -30,9 +30,7 @@ fn argv_err_to_py(err: ArgvError) -> PyErr {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Connection wrapper
-// ---------------------------------------------------------------------------
 
 struct Inner {
     child: Option<Child>,
@@ -131,9 +129,7 @@ impl Drop for SSHSubprocessConnection {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Spawn helper
-// ---------------------------------------------------------------------------
 
 /// Spawn the ssh subprocess, preferring a `socketpair` for its stdio (matches
 /// the Python comment: "we prefer sockets to pipes because they support
@@ -216,7 +212,7 @@ fn spawn(argv: &[String], host: &str, port: Option<u16>) -> PyResult<SSHSubproce
     let child = cmd.spawn().map_err(|e| {
         SocketConnectionError::new_err((
             host.to_string(),
-            port.map(|p| format!(":{p}")).unwrap_or_default(),
+            port,
             "Failed to connect to",
             e.to_string(),
         ))
@@ -236,7 +232,7 @@ fn spawn(argv: &[String], host: &str, port: Option<u16>) -> PyResult<SSHSubproce
     let child = cmd.spawn().map_err(|e| {
         SocketConnectionError::new_err((
             host.to_string(),
-            port.map(|p| format!(":{p}")).unwrap_or_default(),
+            port,
             "Failed to connect to",
             e.to_string(),
         ))
@@ -244,9 +240,7 @@ fn spawn(argv: &[String], host: &str, port: Option<u16>) -> PyResult<SSHSubproce
     Ok(SSHSubprocessConnection::from_parts(child))
 }
 
-// ---------------------------------------------------------------------------
 // Vendor classes exposed to Python
-// ---------------------------------------------------------------------------
 
 macro_rules! subprocess_vendor {
     ($name:ident, $flavor:expr, $pyname:literal) => {
@@ -344,9 +338,7 @@ subprocess_vendor!(
     "PLinkSubprocessVendor"
 );
 
-// ---------------------------------------------------------------------------
 // Loopback "vendor" (plain TCP, no ssh)
-// ---------------------------------------------------------------------------
 
 /// Rust port of `dromedary.ssh.LoopbackVendor`. Used by the test suite via
 /// `stub_sftp.py` to talk to a local SFTP server over a TCP socket with no
@@ -369,7 +361,7 @@ impl LoopbackVendor {
         let sock = std::net::TcpStream::connect((host, port)).map_err(|e| {
             SocketConnectionError::new_err((
                 host.to_string(),
-                format!(":{port}"),
+                port,
                 "Failed to connect to",
                 e.to_string(),
             ))
@@ -380,9 +372,7 @@ impl LoopbackVendor {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Registration
-// ---------------------------------------------------------------------------
 
 pub(crate) fn register(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<SSHSubprocessConnection>()?;

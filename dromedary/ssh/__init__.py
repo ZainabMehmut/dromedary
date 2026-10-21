@@ -365,7 +365,7 @@ class LoopbackVendor(SSHVendor):
             sock.connect((host, port))
         except OSError as e:
             self._raise_connection_error(host, port=port, orig_error=e)
-        return SFTPClient(sock.detach())
+        return SFTPClient(sock.detach(), host, port)
 
 
 register_ssh_vendor("loopback", LoopbackVendor())
