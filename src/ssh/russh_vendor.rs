@@ -20,6 +20,12 @@ pub enum Error {
     Russh(russh::Error),
     /// The server key differs from the one recorded in a known_hosts file.
     HostKeyMismatch(Box<HostKeyMismatch>),
+    /// A known_hosts file could not be read, so the host key can't be
+    /// verified.
+    KnownHosts {
+        path: PathBuf,
+        source: russh::keys::Error,
+    },
     /// All authentication methods we tried were rejected by the server.
     NoMethodsSucceeded,
 }
@@ -30,6 +36,9 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{e}"),
             Error::Russh(e) => write!(f, "{e}"),
             Error::HostKeyMismatch(m) => write!(f, "{m}"),
+            Error::KnownHosts { path, source } => {
+                write!(f, "unable to read {}: {source}", path.display())
+            }
             Error::NoMethodsSucceeded => f.write_str("no SSH authentication method succeeded"),
         }
     }
@@ -98,6 +107,10 @@ impl Session {
     /// Connect, verify the host key and try agent keys, key files and the
     /// supplied password, in that order. Mirrors paramiko.py:68-126.
     pub fn connect(params: &ConnectParams) -> Result<(Session, AuthOutcome), Error> {
+        let lookup = |path| recorded_host_keys(path, params.host, params.port);
+        let mut recorded = lookup(params.system_known_hosts)?;
+        recorded.extend(lookup(params.dromedary_known_hosts)?);
+
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -112,6 +125,7 @@ impl Session {
             port: params.port,
             system_path: params.system_known_hosts.to_path_buf(),
             dromedary_path: params.dromedary_known_hosts.to_path_buf(),
+            recorded,
         };
 
         let (handle, outcome) = runtime.block_on(async {
@@ -169,6 +183,8 @@ struct VerifyingHandler {
     port: u16,
     system_path: PathBuf,
     dromedary_path: PathBuf,
+    /// Keys recorded for this host in either file.
+    recorded: Vec<russh::keys::PublicKey>,
 }
 
 impl russh::client::Handler for VerifyingHandler {
@@ -184,13 +200,7 @@ impl russh::client::Handler for VerifyingHandler {
             // certificate is misbehaving.
             russh::keys::PublicKeyOrCertificate::Certificate(_) => return Ok(false),
         };
-        match check_host_key(
-            &self.host,
-            self.port,
-            server_public_key,
-            &self.system_path,
-            &self.dromedary_path,
-        ) {
+        match check_host_key(server_public_key, &self.recorded) {
             HostKeyCheck::Match => Ok(true),
             HostKeyCheck::Unknown => {
                 // Only written to dromedary's file, as paramiko's
@@ -236,43 +246,47 @@ enum HostKeyCheck {
     Mismatch { expected_fp: String },
 }
 
-/// Check both the system file and dromedary's file. A mismatch in either
-/// file is fatal (it shadows a prior trusted entry). An entry only in the
-/// system file is acceptable without writing to the dromedary file.
-fn check_host_key(
+/// The keys recorded for `host` in the known_hosts file at `path`.
+///
+/// russh treats a file it can't open as having no entries, so check that
+/// first: only a missing file may be skipped. Errors reading the file or
+/// parsing an entry for the host abort the connection rather than letting
+/// the host be treated as unknown.
+fn recorded_host_keys(
+    path: &Path,
     host: &str,
     port: u16,
-    key: &russh::keys::ssh_key::PublicKey,
-    system_path: &Path,
-    dromedary_path: &Path,
-) -> HostKeyCheck {
-    for path in [system_path, dromedary_path] {
-        match russh::keys::check_known_hosts_path(host, port, key, path) {
-            Ok(true) => return HostKeyCheck::Match,
-            Ok(false) => continue,
-            Err(russh::keys::Error::KeyChanged { line }) => {
-                let expected_fp = lookup_recorded_fingerprint(host, port, path, line);
-                return HostKeyCheck::Mismatch { expected_fp };
-            }
-            Err(e) => {
-                log::debug!("reading {}: {}", path.display(), e);
-            }
-        }
+) -> Result<Vec<russh::keys::PublicKey>, Error> {
+    let error = |source| Error::KnownHosts {
+        path: path.to_path_buf(),
+        source,
+    };
+    match std::fs::File::open(path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(error(e.into())),
     }
-    HostKeyCheck::Unknown
+    let entries =
+        russh::keys::known_hosts::known_host_keys_path(host, port, path).map_err(error)?;
+    Ok(entries.into_iter().map(|(_, key)| key).collect())
 }
 
-/// Pull the fingerprint of the recorded key on a specific line so a
-/// mismatch error can show "expected X, got Y". Returns `<unknown>` if the
-/// file can't be reread; the caller still rejects the connection.
-fn lookup_recorded_fingerprint(host: &str, port: u16, path: &Path, line: usize) -> String {
-    match russh::keys::known_hosts::known_host_keys_path(host, port, path) {
-        Ok(entries) => entries
-            .into_iter()
-            .find(|(l, _)| *l == line)
-            .map(|(_, k)| k.fingerprint(Default::default()).to_string())
-            .unwrap_or_else(|| "<unknown>".to_string()),
-        Err(_) => "<unknown>".to_string(),
+/// Check the server key against the keys recorded in both files. A
+/// differing key of the same type in either file is fatal (it shadows a
+/// prior trusted entry). An entry only in the system file is acceptable
+/// without writing to the dromedary file.
+fn check_host_key(
+    key: &russh::keys::PublicKey,
+    recorded: &[russh::keys::PublicKey],
+) -> HostKeyCheck {
+    if recorded.iter().any(|r| r.key_data() == key.key_data()) {
+        return HostKeyCheck::Match;
+    }
+    match recorded.iter().find(|r| r.algorithm() == key.algorithm()) {
+        Some(r) => HostKeyCheck::Mismatch {
+            expected_fp: r.fingerprint(Default::default()).to_string(),
+        },
+        None => HostKeyCheck::Unknown,
     }
 }
 
@@ -761,16 +775,52 @@ j95cboMxAmoNT9OzGxexAAAAAAECAwQF
         let kh = known_hosts();
         Session::connect(&params(port, Some("secret"), &[], &kh)).unwrap();
         assert!(!kh.system.exists());
-        assert!(matches!(
-            check_host_key(
-                "127.0.0.1",
-                port,
-                &public_key(HOST_KEY_PUB),
-                &kh.system,
-                &kh.dromedary
+        assert_eq!(
+            recorded_host_keys(&kh.dromedary, "127.0.0.1", port).unwrap(),
+            vec![public_key(HOST_KEY_PUB)]
+        );
+    }
+
+    #[test]
+    fn missing_known_hosts_has_no_entries() {
+        let kh = known_hosts();
+        assert_eq!(
+            recorded_host_keys(&kh.system, "127.0.0.1", 22).unwrap(),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn unreadable_known_hosts_is_rejected() {
+        let port = start_server(&[russh::MethodKind::Password]);
+        let kh = known_hosts();
+        // Reading a directory fails even when running as root.
+        std::fs::create_dir(&kh.system).unwrap();
+        match Session::connect(&params(port, Some("secret"), &[], &kh)) {
+            Err(Error::KnownHosts { path, .. }) => assert_eq!(path, kh.system),
+            Err(e) => panic!("unexpected error: {e}"),
+            Ok(_) => panic!("connected with unreadable known_hosts"),
+        }
+        assert!(!kh.dromedary.exists());
+    }
+
+    #[test]
+    fn unparsable_entry_does_not_hide_mismatch() {
+        let port = start_server(&[russh::MethodKind::Password]);
+        let kh = known_hosts();
+        std::fs::write(
+            &kh.system,
+            format!(
+                "[127.0.0.1]:{port} {CLIENT_KEY_PUB}\n[127.0.0.1]:{port} ssh-ed25519 not-base64!\n"
             ),
-            HostKeyCheck::Match
-        ));
+        )
+        .unwrap();
+        match Session::connect(&params(port, Some("secret"), &[], &kh)) {
+            Err(Error::KnownHosts { path, .. }) => assert_eq!(path, kh.system),
+            Err(e) => panic!("unexpected error: {e}"),
+            Ok(_) => panic!("connected despite unparsable known_hosts entry"),
+        }
+        assert!(!kh.dromedary.exists());
     }
 
     #[test]

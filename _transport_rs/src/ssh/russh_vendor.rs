@@ -215,6 +215,10 @@ fn connect_err(host: &str, port: u16, e: Error) -> PyErr {
                 m.dromedary_path.display()
             ),
         )),
+        e @ Error::KnownHosts { .. } => TransportError::new_err((
+            format!("Unable to verify host key for {host}"),
+            e.to_string(),
+        )),
         e => SocketConnectionError::new_err((
             host.to_string(),
             port,

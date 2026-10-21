@@ -21,10 +21,11 @@ import socket
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from dromedary._transport_rs import sftp as _sftp_rs
 from dromedary._transport_rs import ssh as _ssh_rs
-from dromedary.errors import SocketConnectionError
+from dromedary.errors import SocketConnectionError, TransportError
 
 
 def closed_port() -> int:
@@ -65,3 +66,36 @@ class TestConnectionErrors(unittest.TestCase):
             _sftp_rs.SFTPClient(ours.detach(), "example.com", 2222)
         self.assertEqual("example.com", cm.exception.host)
         self.assertEqual(":2222", cm.exception.port)
+
+
+class TestRusshHostKeys(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = tmp.name
+        patcher = mock.patch.dict(
+            os.environ,
+            {
+                "HOME": self.home,
+                "XDG_CONFIG_HOME": os.path.join(self.home, ".config"),
+                "SSH_AUTH_SOCK": "",
+            },
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @unittest.skipIf(sys.platform == "win32", "known_hosts lives elsewhere")
+    def test_unreadable_known_hosts(self):
+        # A directory can't be read as a file.
+        os.makedirs(os.path.join(self.home, ".ssh", "known_hosts"))
+        with self.assertRaises(TransportError) as cm:
+            _ssh_rs.RusshVendor().connect_ssh(
+                "alice", None, "127.0.0.1", ["true"], port=closed_port()
+            )
+        known_hosts = os.path.join(self.home, ".ssh", "known_hosts")
+        self.assertEqual("Unable to verify host key for 127.0.0.1", cm.exception.msg)
+        self.assertEqual(
+            f"unable to read {known_hosts}: Is a directory (os error 21)",
+            cm.exception.orig_error,
+        )
