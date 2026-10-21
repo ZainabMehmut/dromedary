@@ -70,6 +70,8 @@ glib = { version = "0.22", optional = true }
 # SFTP client used by the optional sftp transport. Construction takes
 # any Read+Write channel so we don't pull in an SSH library here.
 sftp = { version = ">=0.2.3, <0.4", optional = true }
+russh = { version = "0.62", optional = true }
+tokio = { version = "1", features = ["rt", "io-util"], optional = true }
 
 [features]
 default = ["pyo3"]
@@ -82,6 +84,11 @@ webdav = ["dep:quick-xml"]
 # SFTP transport. Caller supplies the SSH byte-stream channel — no
 # SSH-library dep is added here so embedders pick their own backend.
 sftp = ["dep:sftp"]
+# russh-backed SSH client used by the Python RusshVendor.
+russh = ["dep:russh", "dep:tokio"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "uio"] }
