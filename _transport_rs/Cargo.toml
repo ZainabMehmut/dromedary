@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-dromedary = { path = "..", version = "0.1.10" }
+dromedary = { path = "..", version = "0.1.11" }
 pyo3 = { workspace = true, features = ["extension-module"] }
 pyo3-filelike = { workspace = true }
 pyo3-log = "0.13"
