@@ -6,6 +6,8 @@
 //! files (prompting for passphrases) and look up config paths, then hand
 //! the results to [`Session::connect`].
 
+use russh::keys::Algorithm;
+use std::borrow::Cow;
 use std::fmt;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -118,6 +120,10 @@ impl Session {
 
         let config = Arc::new(russh::client::Config {
             inactivity_timeout: Some(Duration::from_secs(3600)),
+            preferred: russh::Preferred {
+                key: Cow::Owned(preferred_host_key_algorithms(&recorded)),
+                ..Default::default()
+            },
             ..Default::default()
         });
         let handler = VerifyingHandler {
@@ -272,9 +278,10 @@ fn recorded_host_keys(
 }
 
 /// Check the server key against the keys recorded in both files. A
-/// differing key of the same type in either file is fatal (it shadows a
-/// prior trusted entry). An entry only in the system file is acceptable
-/// without writing to the dromedary file.
+/// different key in either file is fatal, even one of another type: an
+/// attacker could otherwise present a key of a type we have no record of.
+/// An entry only in the system file is acceptable without writing to the
+/// dromedary file.
 fn check_host_key(
     key: &russh::keys::PublicKey,
     recorded: &[russh::keys::PublicKey],
@@ -282,12 +289,38 @@ fn check_host_key(
     if recorded.iter().any(|r| r.key_data() == key.key_data()) {
         return HostKeyCheck::Match;
     }
-    match recorded.iter().find(|r| r.algorithm() == key.algorithm()) {
-        Some(r) => HostKeyCheck::Mismatch {
-            expected_fp: r.fingerprint(Default::default()).to_string(),
-        },
-        None => HostKeyCheck::Unknown,
+    if recorded.is_empty() {
+        return HostKeyCheck::Unknown;
     }
+    // Show the recorded key of the same type if there is one, otherwise all
+    // of them.
+    let mut shown: Vec<_> = recorded
+        .iter()
+        .filter(|r| same_key_type(&r.algorithm(), &key.algorithm()))
+        .collect();
+    if shown.is_empty() {
+        shown = recorded.iter().collect();
+    }
+    let expected_fp = shown
+        .iter()
+        .map(|r| r.fingerprint(Default::default()).to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    HostKeyCheck::Mismatch { expected_fp }
+}
+
+/// RSA keys are the same type whichever signature hash is negotiated.
+fn same_key_type(a: &Algorithm, b: &Algorithm) -> bool {
+    matches!((a, b), (Algorithm::Rsa { .. }, Algorithm::Rsa { .. })) || a == b
+}
+
+/// russh's default host key algorithms, with the types we have recorded
+/// for this host moved to the front, as OpenSSH does. Otherwise a server
+/// with several host keys could present one we have no record of.
+fn preferred_host_key_algorithms(recorded: &[russh::keys::PublicKey]) -> Vec<Algorithm> {
+    let mut algorithms = russh::Preferred::DEFAULT.key.to_vec();
+    algorithms.sort_by_key(|a| !recorded.iter().any(|r| same_key_type(&r.algorithm(), a)));
+    algorithms
 }
 
 /// Wraps an async `ChannelStream` so it can be driven by synchronous SFTP
@@ -567,6 +600,17 @@ od3Q5XnJBB0toUrI6E8xAAAAAAECAwQF
     const HOST_KEY_PUB: &str =
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICNc3KBxXKUkcbLGEUVQCQ2+od3Q5XnJBB0toUrI6E8x";
 
+    const ECDSA_HOST_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAaAAAABNlY2RzYS
+1zaGEyLW5pc3RwMjU2AAAACG5pc3RwMjU2AAAAQQQNRImQBDExQP0XLQrof2hLHdjFYQaT
+pylm+T93kLOzkA5TbCDHeKu7Osp/bB++NIwQ+0xAG1fjFTgtrbOr3mv1AAAAmIInrJ2CJ6
+ydAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA1EiZAEMTFA/Rct
+Cuh/aEsd2MVhBpOnKWb5P3eQs7OQDlNsIMd4q7s6yn9sH740jBD7TEAbV+MVOC2ts6vea/
+UAAAAgcP59plQ809jMyiJ+SSnB4DZYAqqsKvHXy/72Zn61vtIAAAAA
+-----END OPENSSH PRIVATE KEY-----
+";
+    const ECDSA_HOST_KEY_PUB: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA1EiZAEMTFA/RctCuh/aEsd2MVhBpOnKWb5P3eQs7OQDlNsIMd4q7s6yn9sH740jBD7TEAbV+MVOC2ts6vea/U=";
+
     const CLIENT_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 QyNTUxOQAAACAtDraz/I3X9mEAPOprNcRYFI/eXG6DMQJqDU/TsxsXsQAAAIg9nHUkPZx1
@@ -657,11 +701,15 @@ j95cboMxAmoNT9OzGxexAAAAAAECAwQF
     /// Start `TestServer` on an ephemeral localhost port in a background
     /// thread. The thread is leaked; it exits with the test process.
     fn start_server(methods: &[russh::MethodKind]) -> u16 {
+        start_server_with_host_keys(methods, &[HOST_KEY])
+    }
+
+    fn start_server_with_host_keys(methods: &[russh::MethodKind], host_keys: &[&str]) -> u16 {
         let config = Arc::new(russh::server::Config {
             methods: methods.into(),
             auth_rejection_time: Duration::ZERO,
             auth_rejection_time_initial: Some(Duration::ZERO),
-            keys: vec![private_key(HOST_KEY)],
+            keys: host_keys.iter().map(|k| private_key(k)).collect(),
             ..Default::default()
         });
         let (tx, rx) = std::sync::mpsc::channel();
@@ -863,5 +911,56 @@ j95cboMxAmoNT9OzGxexAAAAAAECAwQF
         .unwrap();
         Session::connect(&params(port, Some("secret"), &[], &kh)).unwrap();
         assert!(!kh.dromedary.exists());
+    }
+
+    #[test]
+    fn host_key_of_unrecorded_type_is_rejected() {
+        let port = start_server(&[russh::MethodKind::Password]);
+        let kh = known_hosts();
+        let recorded = public_key(ECDSA_HOST_KEY_PUB);
+        russh::keys::known_hosts::learn_known_hosts_path("127.0.0.1", port, &recorded, &kh.system)
+            .unwrap();
+        match Session::connect(&params(port, Some("secret"), &[], &kh)) {
+            Err(Error::HostKeyMismatch(m)) => assert_eq!(
+                m.expected_fp,
+                recorded.fingerprint(Default::default()).to_string()
+            ),
+            Err(e) => panic!("unexpected error: {e}"),
+            Ok(_) => panic!("connected despite host key of unrecorded type"),
+        }
+        assert!(!kh.dromedary.exists());
+    }
+
+    #[test]
+    fn recorded_host_key_type_is_preferred() {
+        // The server offers Ed25519 first, which russh would otherwise pick.
+        let port = start_server_with_host_keys(
+            &[russh::MethodKind::Password],
+            &[HOST_KEY, ECDSA_HOST_KEY],
+        );
+        let kh = known_hosts();
+        russh::keys::known_hosts::learn_known_hosts_path(
+            "127.0.0.1",
+            port,
+            &public_key(ECDSA_HOST_KEY_PUB),
+            &kh.system,
+        )
+        .unwrap();
+        Session::connect(&params(port, Some("secret"), &[], &kh)).unwrap();
+        assert!(!kh.dromedary.exists());
+    }
+
+    #[test]
+    fn preferred_algorithms_put_recorded_types_first() {
+        let default = russh::Preferred::DEFAULT.key.to_vec();
+        assert_eq!(preferred_host_key_algorithms(&[]), default);
+        let algorithms = preferred_host_key_algorithms(&[public_key(ECDSA_HOST_KEY_PUB)]);
+        assert_eq!(
+            algorithms[0],
+            Algorithm::Ecdsa {
+                curve: russh::keys::EcdsaCurve::NistP256
+            }
+        );
+        assert_eq!(algorithms.len(), default.len());
     }
 }
