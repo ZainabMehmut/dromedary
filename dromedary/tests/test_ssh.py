@@ -62,5 +62,6 @@ class TestConnectionErrors(unittest.TestCase):
         ours, theirs = socket.socketpair()
         theirs.close()
         with self.assertRaises(SocketConnectionError) as cm:
-            _sftp_rs.SFTPClient(ours.detach())
-        self.assertEqual("", cm.exception.port)
+            _sftp_rs.SFTPClient(ours.detach(), "example.com", 2222)
+        self.assertEqual("example.com", cm.exception.host)
+        self.assertEqual(":2222", cm.exception.port)

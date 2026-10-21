@@ -349,8 +349,7 @@ impl RusshVendor {
                     .open_sftp()
                     .map_err(|e| PyRuntimeError::new_err(format!("open sftp channel: {e}")))?,
             );
-            SFTPClient::from_channel(channel)
-                .map_err(|e| PyRuntimeError::new_err(format!("sftp init: {e}")))
+            SFTPClient::from_channel(channel, host, port)
         })
     }
 

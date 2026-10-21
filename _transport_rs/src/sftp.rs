@@ -60,12 +60,27 @@ pub(crate) struct SFTPClient {
 }
 
 impl SFTPClient {
-    /// Construct an SFTP client over an arbitrary sync byte-stream channel.
-    /// Used by library-backed SSH vendors (russh etc.) that produce a stream
-    /// rather than a kernel fd.
-    #[cfg(feature = "russh")]
-    pub(crate) fn from_channel(channel: BoxedChannel) -> std::io::Result<Self> {
-        let session = sftp::SftpClient::new(channel)?;
+    /// Construct an SFTP client over an arbitrary sync byte-stream channel
+    /// connected to `host`. Performs the SFTP handshake, so call it with the
+    /// GIL released.
+    pub(crate) fn from_channel(
+        channel: BoxedChannel,
+        host: &str,
+        port: Option<u16>,
+    ) -> PyResult<Self> {
+        let session = sftp::SftpClient::new(channel).map_err(|e| {
+            // An IO error during the opening SFTP handshake means the
+            // transport (ssh subprocess, russh channel or plain TCP socket)
+            // died before we could speak SFTP to it. Report it as a
+            // transport-level connection failure rather than letting a
+            // raw BrokenPipeError / EOF surface at the caller.
+            SocketConnectionError::new_err((
+                host.to_string(),
+                port,
+                "Failed to open SFTP session to",
+                e.to_string(),
+            ))
+        })?;
         Ok(Self {
             sftp: Arc::new(session),
             cwd: None,
@@ -309,42 +324,23 @@ impl SFTPDir {
 #[pymethods]
 impl SFTPClient {
     #[new]
-    fn new(py: Python, fd: isize) -> PyResult<Self> {
-        let session = py
-            .detach(|| {
-                #[cfg(unix)]
-                let channel: BoxedChannel = {
-                    use std::os::fd::FromRawFd;
-                    // SAFETY: `fd` was produced by a vendor that transferred
-                    // ownership via `detach_fd`; wrapping it in `File` makes
-                    // us the sole owner, closed on `Drop`.
-                    Box::new(unsafe { std::fs::File::from_raw_fd(fd as i32) })
-                };
-                #[cfg(windows)]
-                let channel: BoxedChannel = {
-                    use std::os::windows::io::{FromRawHandle, RawHandle};
-                    // SAFETY: same detach-and-transfer contract as unix above.
-                    Box::new(unsafe { std::fs::File::from_raw_handle(fd as RawHandle) })
-                };
-                sftp::SftpClient::new(channel)
-            })
-            .map_err(|e| {
-                // An IO error during the opening SFTP handshake means the
-                // transport (spawned ssh subprocess or plain TCP socket)
-                // died before we could speak SFTP to it. Report it as a
-                // transport-level connection failure rather than letting a
-                // raw BrokenPipeError / EOF surface at the caller.
-                SocketConnectionError::new_err((
-                    "".to_string(),
-                    None::<u16>,
-                    "Failed to open SFTP session",
-                    e.to_string(),
-                ))
-            })?;
-        Ok(Self {
-            sftp: Arc::new(session),
-            cwd: None,
-        })
+    #[pyo3(signature = (fd, host, port = None))]
+    fn new(py: Python, fd: isize, host: &str, port: Option<u16>) -> PyResult<Self> {
+        #[cfg(unix)]
+        let channel: BoxedChannel = {
+            use std::os::fd::FromRawFd;
+            // SAFETY: `fd` was produced by a vendor that transferred
+            // ownership via `detach_fd`; wrapping it in `File` makes
+            // us the sole owner, closed on `Drop`.
+            Box::new(unsafe { std::fs::File::from_raw_fd(fd as i32) })
+        };
+        #[cfg(windows)]
+        let channel: BoxedChannel = {
+            use std::os::windows::io::{FromRawHandle, RawHandle};
+            // SAFETY: same detach-and-transfer contract as unix above.
+            Box::new(unsafe { std::fs::File::from_raw_handle(fd as RawHandle) })
+        };
+        py.detach(|| Self::from_channel(channel, host, port))
     }
 
     #[pyo3(signature = (path, mode = None))]
