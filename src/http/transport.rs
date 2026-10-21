@@ -1768,7 +1768,7 @@ mod tests {
         assert_eq!(format_range_header(&[], 100), "-100");
     }
 
-    // ----- abspath / clone_concrete -----
+    // abspath / clone_concrete
 
     #[test]
     fn abspath_empty_strips_trailing_slash() {
@@ -1845,7 +1845,7 @@ mod tests {
         assert_eq!(cloned.base().as_str(), "http://example.com/a/");
     }
 
-    // ----- segment parameters -----
+    // segment parameters
 
     #[test]
     fn segment_parameters_parsed_from_base_url() {
@@ -1912,7 +1912,7 @@ mod tests {
         assert!(cloned.get_segment_parameters().unwrap().is_empty());
     }
 
-    // ----- ConnectedTransport trait getters -----
+    // ConnectedTransport trait getters
 
     #[test]
     fn connected_scheme_is_unqualified() {
@@ -1970,7 +1970,7 @@ mod tests {
         );
     }
 
-    // ----- classify_reuse_for -----
+    // classify_reuse_for
 
     #[test]
     fn classify_reuse_same_origin_same_path() {

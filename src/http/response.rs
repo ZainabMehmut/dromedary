@@ -107,11 +107,9 @@ impl From<io::Error> for ResponseError {
 
 pub type Result<T> = std::result::Result<T, ResponseError>;
 
-// ---------------------------------------------------------------------------
 // ResponseFile: forward-only wrapper that tracks position across the
 // underlying stream. Reads pass through; seek forward is simulated by
 // reading and discarding.
-// ---------------------------------------------------------------------------
 
 /// A wrapper around the http socket containing the result of a GET
 /// request. Only `read()` and forward-only `seek()` are supported.
@@ -215,12 +213,10 @@ impl<F: InFile> ResponseFile<F> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // RangeFile: overlays range/multipart semantics on top of the same
 // forward-only stream. Track the current `(start, size)` window; when
 // we exhaust it in a multipart response we read a boundary + Content-
 // Range header and move the window forward.
-// ---------------------------------------------------------------------------
 
 /// In `_checked_read()` we may have to discard several MB in the worst
 /// case. To avoid buffering that much, we read-and-discard by chunks.
@@ -615,13 +611,11 @@ impl<F: InFile> RangeFile<F> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // handle_response: the factory that picks between ResponseFile and
 // RangeFile based on the status code + headers. 200 returns the plain
 // wrapper; 206 returns a RangeFile (with boundary set for multipart
 // responses, or a single Content-Range applied otherwise). Anything
 // else raises UnexpectedHttpStatus.
-// ---------------------------------------------------------------------------
 
 /// The two possible wrappers returned by [`handle_response`].
 pub enum ResponseKind<F: InFile> {
@@ -675,9 +669,7 @@ pub fn handle_response<F: InFile>(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 fn read_all<F: InFile>(file: &mut F) -> io::Result<Vec<u8>> {
     let mut out = Vec::new();
@@ -819,9 +811,7 @@ fn format_size(size: Option<u64>) -> String {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Tests: drive the logic against a Cursor-backed InFile.
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
