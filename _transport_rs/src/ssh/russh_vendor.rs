@@ -217,7 +217,7 @@ fn connect_err(host: &str, port: u16, e: Error) -> PyErr {
         )),
         e => SocketConnectionError::new_err((
             host.to_string(),
-            format!(":{port}"),
+            port,
             "Failed to connect to",
             e.to_string(),
         )),

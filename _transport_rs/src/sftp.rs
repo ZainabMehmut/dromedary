@@ -336,7 +336,7 @@ impl SFTPClient {
                 // raw BrokenPipeError / EOF surface at the caller.
                 SocketConnectionError::new_err((
                     "".to_string(),
-                    "".to_string(),
+                    None::<u16>,
                     "Failed to open SFTP session",
                     e.to_string(),
                 ))

@@ -212,7 +212,7 @@ fn spawn(argv: &[String], host: &str, port: Option<u16>) -> PyResult<SSHSubproce
     let child = cmd.spawn().map_err(|e| {
         SocketConnectionError::new_err((
             host.to_string(),
-            port.map(|p| format!(":{p}")).unwrap_or_default(),
+            port,
             "Failed to connect to",
             e.to_string(),
         ))
@@ -232,7 +232,7 @@ fn spawn(argv: &[String], host: &str, port: Option<u16>) -> PyResult<SSHSubproce
     let child = cmd.spawn().map_err(|e| {
         SocketConnectionError::new_err((
             host.to_string(),
-            port.map(|p| format!(":{p}")).unwrap_or_default(),
+            port,
             "Failed to connect to",
             e.to_string(),
         ))
@@ -361,7 +361,7 @@ impl LoopbackVendor {
         let sock = std::net::TcpStream::connect((host, port)).map_err(|e| {
             SocketConnectionError::new_err((
                 host.to_string(),
-                format!(":{port}"),
+                port,
                 "Failed to connect to",
                 e.to_string(),
             ))
