@@ -223,8 +223,9 @@ impl russh::client::Handler for VerifyingHandler {
                     server_public_key,
                     &self.dromedary_path,
                 ) {
-                    log::debug!(
-                        "failed to save host key to {}: {}",
+                    log::warn!(
+                        "Unable to save host key for {} to {}: {}",
+                        self.host,
                         self.dromedary_path.display(),
                         e
                     );

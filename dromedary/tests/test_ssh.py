@@ -26,6 +26,7 @@ from unittest import mock
 from dromedary._transport_rs import sftp as _sftp_rs
 from dromedary._transport_rs import ssh as _ssh_rs
 from dromedary.errors import SocketConnectionError, TransportError
+from dromedary.tests import stub_sftp
 
 
 def closed_port() -> int:
@@ -98,4 +99,57 @@ class TestRusshHostKeys(unittest.TestCase):
         self.assertEqual(
             f"unable to read {known_hosts}: Is a directory (os error 21)",
             cm.exception.orig_error,
+        )
+
+    def start_sftp_server(self):
+        cwd = os.getcwd()
+        os.chdir(self.home)
+        self.addCleanup(os.chdir, cwd)
+        server = stub_sftp.SFTPFullAbsoluteServer()
+        server.start_server()
+        self.addCleanup(server.stop_server)
+        return server
+
+    def test_new_host_key_is_logged(self):
+        server = self.start_sftp_server()
+        with self.assertLogs("dromedary.ssh.russh_vendor", "WARNING") as cm:
+            client = _ssh_rs.RusshVendor().connect_sftp(
+                "foo", "bar", server.host, port=server.port
+            )
+        client.close()
+        fingerprint = server.get_host_key().fingerprint
+        self.assertEqual(
+            [
+                "WARNING:dromedary.ssh.russh_vendor:"
+                f"Adding ssh-rsa host key for 127.0.0.1: {fingerprint}"
+            ],
+            cm.output,
+        )
+
+    @unittest.skipIf(
+        sys.platform == "win32" or os.geteuid() == 0,
+        "needs directory permissions to apply",
+    )
+    def test_unsaved_host_key_is_logged(self):
+        server = self.start_sftp_server()
+        config_dir = os.path.join(self.home, ".config", "breezy")
+        os.makedirs(config_dir)
+        os.chmod(config_dir, 0o500)
+        self.addCleanup(os.chmod, config_dir, 0o700)
+        host_keys = os.path.join(config_dir, "ssh_host_keys")
+        with self.assertLogs("dromedary.ssh.russh_vendor", "WARNING") as cm:
+            client = _ssh_rs.RusshVendor().connect_sftp(
+                "foo", "bar", server.host, port=server.port
+            )
+        client.close()
+        fingerprint = server.get_host_key().fingerprint
+        self.assertEqual(
+            [
+                "WARNING:dromedary.ssh.russh_vendor:"
+                f"Adding ssh-rsa host key for 127.0.0.1: {fingerprint}",
+                "WARNING:dromedary.ssh.russh_vendor:"
+                f"Unable to save host key for 127.0.0.1 to {host_keys}: "
+                "Permission denied (os error 13)",
+            ],
+            cm.output,
         )
