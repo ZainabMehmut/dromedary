@@ -23,10 +23,10 @@ import tempfile
 import unittest
 from unittest import mock
 
+from dromedary import tests as features
 from dromedary._transport_rs import sftp as _sftp_rs
 from dromedary._transport_rs import ssh as _ssh_rs
 from dromedary.errors import SocketConnectionError, TransportError
-from dromedary.tests import stub_sftp
 
 
 def closed_port() -> int:
@@ -43,6 +43,7 @@ class TestConnectionErrors(unittest.TestCase):
             _ssh_rs.LoopbackVendor().spawn_sftp("127.0.0.1", port)
         self.assertEqual(f":{port}", cm.exception.port)
 
+    @unittest.skipIf(sys.platform == "win32", "spawn_sftp returns an fd")
     def test_subprocess_spawn_failure(self):
         vendor = _ssh_rs.OpenSSHSubprocessVendor()
         with tempfile.TemporaryDirectory() as d:
@@ -51,6 +52,7 @@ class TestConnectionErrors(unittest.TestCase):
                 vendor.spawn_sftp(None, "example.com", 2222)
         self.assertEqual(":2222", cm.exception.port)
 
+    @unittest.skipIf(sys.platform == "win32", "spawn_sftp returns an fd")
     def test_subprocess_spawn_failure_without_port(self):
         vendor = _ssh_rs.OpenSSHSubprocessVendor()
         with tempfile.TemporaryDirectory() as d:
@@ -102,6 +104,10 @@ class TestRusshHostKeys(unittest.TestCase):
         )
 
     def start_sftp_server(self):
+        if not features.paramiko.available():
+            self.skipTest("paramiko is not available")
+        from dromedary.tests import stub_sftp
+
         cwd = os.getcwd()
         os.chdir(self.home)
         self.addCleanup(os.chdir, cwd)
